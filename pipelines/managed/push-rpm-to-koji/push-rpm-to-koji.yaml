@@ -143,7 +143,7 @@ spec:
               {"resultIndex": 0, "key": ".conforma.workerCount", "default": "4"},
               {"resultIndex": 1, "key": ".pushOptions.pushKeytab.secret"},
               {"resultIndex": 2, "key": ".pushOptions.pushPipelineImage"},
-              {"resultIndex": 3, "key": ".pushOptions.pushType", "default": "import"}
+              {"resultIndex": 3, "key": ".pushOptions.pushType", "default": "promote"}
             ]
         - name: taskGitUrl
           value: "$(params.taskGitUrl)"
