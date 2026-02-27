@@ -5,15 +5,14 @@ metadata:
   name: push-rpm-to-koji
   annotations:
     tekton.dev/pipelines.minVersion: "0.12.1"
-    tekton.dev/tags: push-koji
+    tekton.dev/tags: push-artifact-storage
 spec:
   description: |-
-    Tekton pipeline to push rpms into the koji instance.
+    Tekton pipeline to push rpms into the artifact storage instance.
   params:
     - name: release
       type: string
-      description:
-        The namespaced name (namespace/name) of the Release custom resource initiating this pipeline execution
+      description: The namespaced name (namespace/name) of the Release custom resource initiating this pipeline execution
     - name: releasePlan
       type: string
       description: The namespaced name (namespace/name) of the releasePlan
@@ -142,10 +141,9 @@ spec:
           value: |
             [
               {"resultIndex": 0, "key": ".conforma.workerCount", "default": "4"},
-              {"resultIndex": 1, "key": ".conforma.timeout", "default": "8h0m0s"},
-              {"resultIndex": 2, "key": ".pushOptions.pushKeytab.secret"},
-              {"resultIndex": 3, "key": ".pushOptions.pushPipelineImage"},
-              {"resultIndex": 4, "key": ".pushOptions.pushType", "default": "import"}
+              {"resultIndex": 1, "key": ".pushOptions.pushKeytab.secret"},
+              {"resultIndex": 2, "key": ".pushOptions.pushPipelineImage"},
+              {"resultIndex": 3, "key": ".pushOptions.pushType", "default": "import"}
             ]
         - name: taskGitUrl
           value: "$(params.taskGitUrl)"
@@ -219,8 +217,6 @@ spec:
           value: "true"
         - name: EXTRA_RULE_DATA
           value: $(params.enterpriseContractExtraRuleData)
-        - name: TIMEOUT
-          value: "$(tasks.collect-task-params.results.extractedValues[1])"
         - name: WORKERS
           value: "$(tasks.collect-task-params.results.extractedValues[0])"
         - name: SOURCE_DATA_ARTIFACT
@@ -246,9 +242,9 @@ spec:
         - name: snapshotPath
           value: "$(tasks.collect-data.results.snapshotSpec)"
         - name: pushSecret
-          value: $(tasks.collect-task-params.results.extractedValues[2])
+          value: $(tasks.collect-task-params.results.extractedValues[1])
         - name: pipelineImage
-          value: $(tasks.collect-task-params.results.extractedValues[3])
+          value: $(tasks.collect-task-params.results.extractedValues[2])
         - name: ociStorage
           value: $(params.ociStorage)
         - name: sourceDataArtifact
@@ -262,9 +258,9 @@ spec:
         - name: taskGitRevision
           value: "$(params.taskGitRevision)"
       runAfter:
-        - collect-task-params
+        - verify-conforma
       when:
-        - input: $(tasks.collect-task-params.results.extractedValues[4])
+        - input: $(tasks.collect-task-params.results.extractedValues[3])
           operator: notin
           values: ["promote"]
     - name: update-package-collection-after-push-rpm-process
@@ -283,9 +279,9 @@ spec:
         - name: snapshotPath
           value: "$(tasks.collect-data.results.snapshotSpec)"
         - name: pushSecret
-          value: $(tasks.collect-task-params.results.extractedValues[2])
+          value: $(tasks.collect-task-params.results.extractedValues[1])
         - name: pipelineImage
-          value: $(tasks.collect-task-params.results.extractedValues[3])
+          value: $(tasks.collect-task-params.results.extractedValues[2])
         - name: ociStorage
           value: $(params.ociStorage)
         - name: sourceDataArtifact
@@ -299,12 +295,51 @@ spec:
         - name: taskGitRevision
           value: "$(params.taskGitRevision)"
         - name: pushType
-          value: "$(tasks.collect-task-params.results.extractedValues[4])"
+          value: "$(tasks.collect-task-params.results.extractedValues[3])"
       runAfter:
         - push-rpm-to-koji
       when:
-        - input: $(tasks.collect-task-params.results.extractedValues[4])
+        - input: $(tasks.collect-task-params.results.extractedValues[3])
           operator: notin
+          values: ["promote"]
+    - name: push-artifacts-to-storage
+      taskRef:
+        resolver: "git"
+        params:
+          - name: url
+            value: $(params.taskGitUrl)
+          - name: revision
+            value: $(params.taskGitRevision)
+          - name: pathInRepo
+            value: tasks/managed/push-artifacts-to-storage/push-artifacts-to-storage.yaml
+      params:
+        - name: dataPath
+          value: "$(tasks.collect-data.results.data)"
+        - name: snapshotPath
+          value: "$(tasks.collect-data.results.snapshotSpec)"
+        - name: snapshotNamespace
+          value: "$(tasks.collect-data.results.snapshotNamespace)"
+        - name: snapshotBuildId
+          value: "$(tasks.collect-data.results.snapshotBuildId)"
+        - name: pipelineImage
+          value: $(tasks.collect-task-params.results.extractedValues[3])
+        - name: ociStorage
+          value: $(params.ociStorage)
+        - name: sourceDataArtifact
+          value: "$(tasks.reduce-snapshot.results.sourceDataArtifact)"
+        - name: dataDir
+          value: $(params.dataDir)
+        - name: taskGitUrl
+          value: "$(params.taskGitUrl)"
+        - name: taskGitRevision
+          value: "$(params.taskGitRevision)"
+        - name: trustedArtifactsDebug
+          value: "$(params.trustedArtifactsDebug)"
+      runAfter:
+        - verify-conforma
+      when:
+        - input: $(tasks.collect-task-params.results.extractedValues[3])
+          operator: in
           values: ["promote"]
     - name: promote-koji-draft-build
       taskRef:
@@ -322,9 +357,9 @@ spec:
         - name: snapshotPath
           value: "$(tasks.collect-data.results.snapshotSpec)"
         - name: pushSecret
-          value: $(tasks.collect-task-params.results.extractedValues[2])
+          value: $(tasks.collect-task-params.results.extractedValues[1])
         - name: pipelineImage
-          value: $(tasks.collect-task-params.results.extractedValues[3])
+          value: $(tasks.collect-task-params.results.extractedValues[2])
         - name: ociStorage
           value: $(params.ociStorage)
         - name: sourceDataArtifact
@@ -338,9 +373,9 @@ spec:
         - name: taskGitRevision
           value: "$(params.taskGitRevision)"
       runAfter:
-        - collect-task-params
+        - push-artifacts-to-storage
       when:
-        - input: $(tasks.collect-task-params.results.extractedValues[4])
+        - input: $(tasks.collect-task-params.results.extractedValues[3])
           operator: in
           values: ["promote"]
     - name: update-package-collection-after-promote-draft-build
@@ -359,9 +394,9 @@ spec:
         - name: snapshotPath
           value: "$(tasks.collect-data.results.snapshotSpec)"
         - name: pushSecret
-          value: $(tasks.collect-task-params.results.extractedValues[2])
+          value: $(tasks.collect-task-params.results.extractedValues[1])
         - name: pipelineImage
-          value: $(tasks.collect-task-params.results.extractedValues[3])
+          value: $(tasks.collect-task-params.results.extractedValues[2])
         - name: ociStorage
           value: $(params.ociStorage)
         - name: sourceDataArtifact
@@ -375,11 +410,11 @@ spec:
         - name: taskGitRevision
           value: "$(params.taskGitRevision)"
         - name: pushType
-          value: "$(tasks.collect-task-params.results.extractedValues[4])"
+          value: "$(tasks.collect-task-params.results.extractedValues[3])"
       runAfter:
         - promote-koji-draft-build
       when:
-        - input: $(tasks.collect-task-params.results.extractedValues[4])
+        - input: $(tasks.collect-task-params.results.extractedValues[3])
           operator: in
           values: ["promote"]
   finally:
